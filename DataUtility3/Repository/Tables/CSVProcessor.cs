@@ -1,5 +1,6 @@
 ﻿
 using DataUtility.Domain;
+using DataUtility3.Repository.Tables;
 using Microsoft.VisualBasic.FileIO;
 using System.Text;
 
@@ -8,18 +9,18 @@ namespace DataUtility.Repository.Tables;
 public static class CSVProcessor
 {
 	/// <summary>
-	/// Carrega e converte um arquivo CSV em um objeto SimpleTableData
+	/// Carrega e converte um arquivo CSV em um objeto SimpleTableData usando a configuração especificada.
 	/// </summary>
-	public static SimpleTableData LoadAndConvertCSV(string folderPath, string fileName)
+	public static SimpleTableData LoadAndConvertCSV(string folderPath, string fileName, CSVReaderConfig config)
 	{
 		string fullPath = Path.Combine(folderPath, fileName);
 		var tableData = new SimpleTableData();
 
-		using (var parser = new TextFieldParser(fullPath))
+		using (var parser = new TextFieldParser(fullPath, config.Encoding))
 		{
 			parser.TextFieldType = FieldType.Delimited;
-			parser.SetDelimiters(";");
-			parser.HasFieldsEnclosedInQuotes = true;
+			parser.SetDelimiters(config.FieldSeparator);
+			parser.HasFieldsEnclosedInQuotes = true; // Suposição, ajustar conforme necessidade
 
 			// Processar cabeçalho
 			if (!parser.EndOfData)
@@ -51,9 +52,9 @@ public static class CSVProcessor
 	}
 
 	/// <summary>
-	/// Escreve um arquivo CSV a partir de um objeto SimpleTableData
+	/// Escreve um arquivo CSV a partir de um objeto SimpleTableData usando a configuração especificada.
 	/// </summary>
-	public static void WriteCSV(SimpleTableData data, string folderPath, string fileName)
+	public static void WriteCSV(SimpleTableData data, string folderPath, string fileName, CSVReaderConfig config)
 	{
 		if (data == null)
 			throw new ArgumentNullException(nameof(data));
@@ -64,10 +65,10 @@ public static class CSVProcessor
 		Directory.CreateDirectory(folderPath);
 		string fullPath = Path.Combine(folderPath, fileName);
 
-		using (var writer = new StreamWriter(fullPath, false, Encoding.UTF8))
+		using (var writer = new StreamWriter(fullPath, false, config.Encoding))
 		{
 			// Escrever cabeçalho
-			writer.WriteLine(FormatCsvLine(data.Headers));
+			writer.WriteLine(string.Join(config.FieldMerger, data.Headers));
 
 			// Escrever linhas de dados
 			if (data.Rows != null)
@@ -77,29 +78,21 @@ public static class CSVProcessor
 					if (row.Count != data.Headers.Count)
 						throw new ArgumentException($"Número de colunas na linha ({row.Count}) não corresponde ao cabeçalho ({data.Headers.Count})");
 
-					writer.WriteLine(FormatCsvLine(row));
+					writer.WriteLine(string.Join(config.FieldMerger, row.Select(field => FormatCsvField(field, config))));
 				}
 			}
 		}
 	}
 
 	/// <summary>
-	/// Formata uma linha para o padrão CSV com escape correto
+	/// Formata um campo individual seguindo as regras CSV e a configuração especificada.
 	/// </summary>
-	private static string FormatCsvLine(IEnumerable<string?> fields)
-	{
-		return string.Join(",", fields.Select(FormatCsvField));
-	}
-
-	/// <summary>
-	/// Formata um campo individual seguindo as regras CSV
-	/// </summary>
-	private static string FormatCsvField(string? field)
+	private static string FormatCsvField(string? field, CSVReaderConfig config)
 	{
 		if (string.IsNullOrEmpty(field)) return string.Empty;
 
 		// Verificar se precisa de escaping
-		if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+		if (field.Contains(config.FieldMerger) || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
 		{
 			return $"\"{field.Replace("\"", "\"\"")}\"";
 		}
