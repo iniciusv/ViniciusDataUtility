@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
-using DataUtility.General;
+using DataUtility.Domain;
 using Microsoft.Data.SqlClient;
 
-namespace DataUtility;
-namespace DataUtility.DataBase.Tables;
+namespace DataUtility.DataBase.DataBases;
 
 
 public class SchemaGetter

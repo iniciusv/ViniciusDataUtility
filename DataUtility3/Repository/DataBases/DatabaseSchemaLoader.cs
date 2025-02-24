@@ -1,15 +1,8 @@
-﻿using DataUtility.General;
-using DataUtility2.General;
+﻿using DataUtility.Domain;
 using Microsoft.Data.SqlClient;
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
-namespace DataUtility2.DataBeseUtils;
-
+namespace DataUtility.DataBase.DataBases;
 
 public class DatabaseSchemaLoader
 {

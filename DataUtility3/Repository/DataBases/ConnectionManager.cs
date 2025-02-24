@@ -1,6 +1,7 @@
 ﻿using Microsoft.Data.SqlClient;
 
-namespace DataUtility;
+namespace DataUtility.DataBase.DataBases;
+
 
 public class ConnectionManager : IDisposable
 {

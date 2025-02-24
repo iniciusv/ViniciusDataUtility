@@ -1,9 +1,7 @@
-﻿using DataUtility.General;
-using DataUtility2.General;
+﻿using DataUtility.Domain;
 using Microsoft.Data.SqlClient;
 using System.Collections.Generic;
-
-namespace DataUtility;
+namespace DataUtility.DataBase.DataBases;
 
 public class DataExtractor
 {

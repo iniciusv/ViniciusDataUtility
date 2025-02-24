@@ -1,7 +1,7 @@
 ﻿using NPOI.SS.UserModel;
 using NPOI.XSSF.UserModel;
 using ClosedXML.Excel;
-using DataUtility.General;
+using DataUtility.Domain;
 
 namespace DataUtility.Repository.Tables;
 
