@@ -5,6 +5,8 @@ using DataUtility.General;
 using Microsoft.Data.SqlClient;
 
 namespace DataUtility;
+namespace DataUtility.DataBase.Tables;
+
 
 public class SchemaGetter
 {

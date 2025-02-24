@@ -1,112 +1,107 @@
 ﻿using DataUtility.General;
 using Microsoft.VisualBasic.FileIO;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
 
-namespace DataUtility2.FilesRepository
+namespace DataUtility.Repository.Tables;
+
+public static class CSVProcessor
 {
-	public static class CSVProcessor
+	/// <summary>
+	/// Carrega e converte um arquivo CSV em um objeto SimpleTableData
+	/// </summary>
+	public static SimpleTableData LoadAndConvertCSV(string folderPath, string fileName)
 	{
-		/// <summary>
-		/// Carrega e converte um arquivo CSV em um objeto SimpleTableData
-		/// </summary>
-		public static SimpleTableData LoadAndConvertCSV(string folderPath, string fileName)
+		string fullPath = Path.Combine(folderPath, fileName);
+		var tableData = new SimpleTableData();
+
+		using (var parser = new TextFieldParser(fullPath))
 		{
-			string fullPath = Path.Combine(folderPath, fileName);
-			var tableData = new SimpleTableData();
+			parser.TextFieldType = FieldType.Delimited;
+			parser.SetDelimiters(";");
+			parser.HasFieldsEnclosedInQuotes = true;
 
-			using (var parser = new TextFieldParser(fullPath))
+			// Processar cabeçalho
+			if (!parser.EndOfData)
 			{
-				parser.TextFieldType = FieldType.Delimited;
-				parser.SetDelimiters(";");
-				parser.HasFieldsEnclosedInQuotes = true;
-
-				// Processar cabeçalho
-				if (!parser.EndOfData)
-				{
-					string[] headerFields = parser.ReadFields();
-					tableData.Headers = new List<string>(headerFields);
-				}
-
-				int columns = tableData.Headers?.Count ?? 0;
-				tableData.Rows = new List<List<string?>>();
-
-				// Processar linhas
-				while (!parser.EndOfData)
-				{
-					string[] fields = parser.ReadFields();
-					var row = new List<string?>(new string?[columns]);
-
-					for (int i = 0; i < columns && i < fields.Length; i++)
-					{
-						row[i] = fields[i];
-					}
-
-					tableData.Rows.Add(row);
-				}
+				string[] headerFields = parser.ReadFields();
+				tableData.Headers = new List<string>(headerFields);
 			}
 
-			tableData.TableName = Path.GetFileNameWithoutExtension(fileName);
-			return tableData;
-		}
+			int columns = tableData.Headers?.Count ?? 0;
+			tableData.Rows = new List<List<string?>>();
 
-		/// <summary>
-		/// Escreve um arquivo CSV a partir de um objeto SimpleTableData
-		/// </summary>
-		public static void WriteCSV(SimpleTableData data, string folderPath, string fileName)
-		{
-			if (data == null)
-				throw new ArgumentNullException(nameof(data));
-
-			if (data.Headers == null || data.Headers.Count == 0)
-				throw new ArgumentException("O cabeçalho não pode ser nulo ou vazio", nameof(data));
-
-			Directory.CreateDirectory(folderPath);
-			string fullPath = Path.Combine(folderPath, fileName);
-
-			using (var writer = new StreamWriter(fullPath, false, Encoding.UTF8))
+			// Processar linhas
+			while (!parser.EndOfData)
 			{
-				// Escrever cabeçalho
-				writer.WriteLine(FormatCsvLine(data.Headers));
+				string[] fields = parser.ReadFields();
+				var row = new List<string?>(new string?[columns]);
 
-				// Escrever linhas de dados
-				if (data.Rows != null)
+				for (int i = 0; i < columns && i < fields.Length; i++)
 				{
-					foreach (var row in data.Rows)
-					{
-						if (row.Count != data.Headers.Count)
-							throw new ArgumentException($"Número de colunas na linha ({row.Count}) não corresponde ao cabeçalho ({data.Headers.Count})");
-
-						writer.WriteLine(FormatCsvLine(row));
-					}
+					row[i] = fields[i];
 				}
+
+				tableData.Rows.Add(row);
 			}
 		}
 
-		/// <summary>
-		/// Formata uma linha para o padrão CSV com escape correto
-		/// </summary>
-		private static string FormatCsvLine(IEnumerable<string?> fields)
-		{
-			return string.Join(",", fields.Select(FormatCsvField));
-		}
+		tableData.TableName = Path.GetFileNameWithoutExtension(fileName);
+		return tableData;
+	}
 
-		/// <summary>
-		/// Formata um campo individual seguindo as regras CSV
-		/// </summary>
-		private static string FormatCsvField(string? field)
-		{
-			if (string.IsNullOrEmpty(field)) return string.Empty;
+	/// <summary>
+	/// Escreve um arquivo CSV a partir de um objeto SimpleTableData
+	/// </summary>
+	public static void WriteCSV(SimpleTableData data, string folderPath, string fileName)
+	{
+		if (data == null)
+			throw new ArgumentNullException(nameof(data));
 
-			// Verificar se precisa de escaping
-			if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+		if (data.Headers == null || data.Headers.Count == 0)
+			throw new ArgumentException("O cabeçalho não pode ser nulo ou vazio", nameof(data));
+
+		Directory.CreateDirectory(folderPath);
+		string fullPath = Path.Combine(folderPath, fileName);
+
+		using (var writer = new StreamWriter(fullPath, false, Encoding.UTF8))
+		{
+			// Escrever cabeçalho
+			writer.WriteLine(FormatCsvLine(data.Headers));
+
+			// Escrever linhas de dados
+			if (data.Rows != null)
 			{
-				return $"\"{field.Replace("\"", "\"\"")}\"";
+				foreach (var row in data.Rows)
+				{
+					if (row.Count != data.Headers.Count)
+						throw new ArgumentException($"Número de colunas na linha ({row.Count}) não corresponde ao cabeçalho ({data.Headers.Count})");
+
+					writer.WriteLine(FormatCsvLine(row));
+				}
 			}
-			return field;
 		}
+	}
+
+	/// <summary>
+	/// Formata uma linha para o padrão CSV com escape correto
+	/// </summary>
+	private static string FormatCsvLine(IEnumerable<string?> fields)
+	{
+		return string.Join(",", fields.Select(FormatCsvField));
+	}
+
+	/// <summary>
+	/// Formata um campo individual seguindo as regras CSV
+	/// </summary>
+	private static string FormatCsvField(string? field)
+	{
+		if (string.IsNullOrEmpty(field)) return string.Empty;
+
+		// Verificar se precisa de escaping
+		if (field.Contains(",") || field.Contains("\"") || field.Contains("\n") || field.Contains("\r"))
+		{
+			return $"\"{field.Replace("\"", "\"\"")}\"";
+		}
+		return field;
 	}
 }
