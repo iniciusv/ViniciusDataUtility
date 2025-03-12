@@ -45,22 +45,35 @@ public class DatabaseSchemaLoader
 		return tables;
 	}
 
-	private (List<string>, List<string?>, List<string?>) GetTableSchema(SqlConnection connection, string tableName)
+	public (List<string>, List<string>, List<string?>) GetTableSchema(SqlConnection connection, string tableName)
 	{
 		var headers = new List<string>();
-		var dataTypes = new List<string?>();
+		var dataTypes = new List<string>();
 		var nullable = new List<string?>();
 
-		using (var command = new SqlCommand($"SELECT * FROM {tableName} WHERE 1 = 0", connection)) // Consulta para obter o schema sem dados
+		// Consulta para obter os tipos de dados do SQL Server
+		string query = @"
+        SELECT 
+            c.name AS ColumnName,
+            t.name AS DataType,
+            c.is_nullable
+        FROM 
+            sys.columns c
+        INNER JOIN 
+            sys.types t ON c.user_type_id = t.user_type_id
+        WHERE 
+            c.object_id = OBJECT_ID(@TableName)";
+
+		using (var cmd = new SqlCommand(query, connection))
 		{
-			using (var reader = command.ExecuteReader(CommandBehavior.SchemaOnly))
+			cmd.Parameters.AddWithValue("@TableName", tableName);
+			using (var reader = cmd.ExecuteReader())
 			{
-				var dataTable = reader.GetSchemaTable();
-				foreach (DataRow column in dataTable.Rows)
+				while (reader.Read())
 				{
-					headers.Add(column["ColumnName"].ToString());
-					dataTypes.Add(column["DataType"].ToString());
-					nullable.Add(column["AllowDBNull"].ToString());
+					headers.Add(reader["ColumnName"].ToString());
+					dataTypes.Add(reader["DataType"].ToString().ToLower()); // Ex: "decimal", "int"
+					nullable.Add(reader["is_nullable"].ToString());
 				}
 			}
 		}

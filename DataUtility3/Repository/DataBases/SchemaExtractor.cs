@@ -6,7 +6,6 @@ using Microsoft.Data.SqlClient;
 
 namespace DataUtility.DataBase.DataBases;
 
-
 public class SchemaGetter
 {
 	private readonly SqlConnection _connection;
@@ -16,11 +15,9 @@ public class SchemaGetter
 		_connection = connection;
 	}
 
-	// Método modificado para aceitar uma conexão aberta e uma lista de nomes de tabelas
 	public List<TableSchema> GetTableSchemas(List<string> tableNames)
 	{
 		List<TableSchema> schemas = new List<TableSchema>();
-		// Utiliza a conexão fornecida, supõe-se que ela esteja aberta
 		DataTable allTables = _connection.GetSchema("Tables");
 
 		foreach (DataRow row in allTables.Rows)
