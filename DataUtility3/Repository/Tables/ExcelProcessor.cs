@@ -2,57 +2,74 @@
 using NPOI.XSSF.UserModel;
 using ClosedXML.Excel;
 using DataUtility.Domain;
+using Microsoft.AspNetCore.Http;
 
 namespace DataUtility.Repository.Tables;
 
 public static class ExcelProcessor
 {
-	/// <summary>
-	/// Carrega e converte um arquivo Excel usando o caminho da pasta e o nome do arquivo.
-	/// </summary>
-	/// <param name="folderPath">Caminho da pasta onde o arquivo Excel está localizado.</param>
-	/// <param name="fileName">Nome do arquivo Excel a ser carregado.</param>
-	/// <returns>Objeto SimpleExcelData contendo os dados do arquivo Excel.</returns>
-	public static SimpleTableData LoadAndConvertExcel(string folderPath, string fileName)
+	public static SimpleTableData LoadAndConvertExcel(string folderPath, string fileName, int initialRow = 1)
 	{
-		string fullPath = System.IO.Path.Combine(folderPath, fileName);
-		var workbook = new XLWorkbook(fullPath);
-		return ConvertToSimpleData(workbook);
+		string fullPath = Path.Combine(folderPath, fileName);
+		return LoadAndConvertExcel(fullPath, initialRow);
 	}
 
-	/// <summary>
-	/// Converte um XLWorkbook em um SimpleExcelData.
-	/// </summary>
-	/// <param name="workbook">O workbook do Excel a ser convertido.</param>
-	/// <returns>Objeto SimpleExcelData com dados extraídos do workbook.</returns>
-	private static SimpleTableData ConvertToSimpleData(XLWorkbook workbook)
+	public static SimpleTableData LoadAndConvertExcel(string fullPath, int initialRow = 1)
+	{
+		var workbook = new XLWorkbook(fullPath);
+		return ConvertToSimpleData(workbook, initialRow);
+	}
+
+	public static SimpleTableData ConvertFromFormFile(IFormFile file, int initialRow = 1)
+	{
+		using (var memoryStream = new MemoryStream())
+		{
+			file.CopyTo(memoryStream);
+			memoryStream.Position = 0;
+
+			using (var workbook = new XLWorkbook(memoryStream))
+			{
+				return ConvertToSimpleData(workbook, initialRow);
+			}
+		}
+	}
+
+	private static SimpleTableData ConvertToSimpleData(XLWorkbook workbook, int initialRow)
 	{
 		var simpleData = new SimpleTableData();
 		var sheet = workbook.Worksheet(1);
-		var firstRowUsed = sheet.FirstRowUsed();
-		var rowsUsed = sheet.RowsUsed();
+
+		// Encontra a primeira linha usada começando da initialRow
+		var firstRowUsed = sheet.Row(initialRow);
+		var rowsUsed = sheet.Rows(initialRow, sheet.LastRowUsed().RowNumber());
 
 		// Processa o cabeçalho
-		simpleData.Headers = firstRowUsed.CellsUsed().Select(c => c.GetValue<string>()).ToList();
+		simpleData.Headers = firstRowUsed.CellsUsed()
+								.Select(c => c.GetValue<string>())
+								.ToList();
 
-		// Processa as linhas de dados
+		// Processa as linhas de dados (começando da linha após o cabeçalho)
 		int numberOfHeaders = simpleData.Headers.Count;
-		simpleData.Rows = rowsUsed.Skip(1).Select(row => {
-			var rowList = new List<string>(new string[numberOfHeaders]);
-			var cells = row.CellsUsed().ToList();
-			for (int i = 0; i < cells.Count; i++)
-			{
-				int index = cells[i].Address.ColumnNumber - 1;
-				if (index < numberOfHeaders)
-				{
-					rowList[index] = cells[i].GetValue<string>() ?? "";
-				}
-			}
-			return rowList;
-		}).ToList();
+		simpleData.Rows = rowsUsed.Skip(1) // Pula a linha do cabeçalho
+							.Select(row => {
+								var rowList = new List<string?>(new string[numberOfHeaders]);
+								var cells = row.CellsUsed().ToList();
+								for (int i = 0; i < cells.Count; i++)
+								{
+									int index = cells[i].Address.ColumnNumber - 1;
+									if (index < numberOfHeaders)
+									{
+										rowList[index] = cells[i].GetValue<string>() ?? string.Empty;
+									}
+								}
+								return rowList;
+							}).ToList();
 
 		return simpleData;
 	}
+
+
+	
 
 	public static void CreateExcelFile(string folderPath, string fileName, SimpleTableData data)
 	{

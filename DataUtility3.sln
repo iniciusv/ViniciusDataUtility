@@ -1,9 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.12.35506.116 d17.12
+VisualStudioVersion = 17.12.35506.116
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataUtility3", "DataUtility3\DataUtility3.csproj", "{7F0A6B18-EDF1-4BE0-A33D-9946F540D316}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataBaseCopier", "DataTableCopier\DataBaseCopier.csproj", "{778AE57C-51B5-44E5-85A0-5601B967723E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PlayGroundTransformer", "PlayGroundTransformer\PlayGroundTransformer.csproj", "{A3254146-5D24-4CFA-AC18-F730B03FB91F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -15,8 +19,19 @@ Global
 		{7F0A6B18-EDF1-4BE0-A33D-9946F540D316}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7F0A6B18-EDF1-4BE0-A33D-9946F540D316}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7F0A6B18-EDF1-4BE0-A33D-9946F540D316}.Release|Any CPU.Build.0 = Release|Any CPU
+		{778AE57C-51B5-44E5-85A0-5601B967723E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{778AE57C-51B5-44E5-85A0-5601B967723E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{778AE57C-51B5-44E5-85A0-5601B967723E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{778AE57C-51B5-44E5-85A0-5601B967723E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3254146-5D24-4CFA-AC18-F730B03FB91F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3254146-5D24-4CFA-AC18-F730B03FB91F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3254146-5D24-4CFA-AC18-F730B03FB91F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3254146-5D24-4CFA-AC18-F730B03FB91F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {45C94884-81C9-413C-8F22-1D4037ABAB45}
 	EndGlobalSection
 EndGlobal

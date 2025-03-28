@@ -7,10 +7,9 @@ public class SimpleTableData
 	public TableSchema? Schema { get; set; }
 	public List<List<string?>>? Rows { get; set; }
 
-	// Construtor que inicializa Headers e Rows
 	public SimpleTableData()
 	{
-		Headers = new List<string>(); // Assegura que Headers é sempre inicializado
-		Rows = new List<List<string?>>(); // Assegura que Rows é sempre inicializado
+		Headers = new List<string>();
+		Rows = new List<List<string?>>();
 	}
 }
