@@ -25,8 +25,8 @@ public class UserValidator : AbstractValidator<User>
 		RuleFor(x => x.Description)
 			.MaximumLength(100).WithMessage("Descrição muito longa");
 
-		RuleFor(x => x.NCM)
-			.GreaterThan(0).WithMessage("NCM deve ser positivo");
+		//RuleFor(x => x.NCM)
+		//	.GreaterThan(0).WithMessage("NCM deve ser positivo");
 	}
 
 

@@ -12,4 +12,6 @@ public class User
 	public string ClientCode { get; set; }
 	public string Description { get; set; }
 	public int NCM { get; set; }
+	public string Group { get; set; }
+	public Profile Profile { get; set; }
 }

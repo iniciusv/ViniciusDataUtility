@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace DataUtility3.Transformers;
 
-// Modificação no ModelBinder para aplicar os valores estáticos
+
 public class ModelBinder<TModel> where TModel : class, new()
 {
 	private readonly TableDataTransformer<TModel> _transformer;
@@ -52,7 +52,7 @@ public class ModelBinder<TModel> where TModel : class, new()
 
 			if (lineResult.IsValid && lineResult.Entity != null)
 			{
-				// Aplica os valores estáticos antes de adicionar o modelo
+				// Aplica os valores estáticos e referências antes de adicionar o modelo
 				_headerMapper.ApplyStaticValues(lineResult.Entity);
 				validModels.Add(lineResult.Entity);
 			}

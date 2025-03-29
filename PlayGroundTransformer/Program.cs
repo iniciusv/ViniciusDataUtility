@@ -23,8 +23,15 @@ class Program
 			dateFormat: "dd/MM/yyyy",
 			decimalSeparator: ",");
 
+		var profiles = new Profile()
+		{
+			Name = "saudoso"
+		};
+		var profileList = new List<Profile>();
+		profileList.Add(profiles);
+
 		var binder = new ModelBinder<User>(
-			new UserMapper(),
+			new UserMapper("jhghj", profileList),
 			new UserValidator(),
 			readerConfig);
 

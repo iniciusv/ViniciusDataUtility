@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq.Expressions;
+using System.Reflection;
 
 namespace DataUtility3.Transformers;
 
@@ -12,6 +13,9 @@ public abstract class HeaderMapper<TModel> where TModel : class
 {
 	private readonly Dictionary<string, Expression<Func<TModel, object>>> _mappings;
 	private readonly Dictionary<Expression<Func<TModel, object>>, object> _staticValues;
+	private readonly Dictionary<Expression<Func<TModel, object>>, Func<string, object>> _referenceResolvers = new();
+
+	private readonly Dictionary<string, Func<string, object>> _headerReferenceResolvers = new();
 	private readonly string _mapperName;
 
 	protected HeaderMapper(string mapperName)
@@ -92,4 +96,39 @@ public abstract class HeaderMapper<TModel> where TModel : class
 		}
 	}
 
+	/// <summary>
+	/// Define um resolvedor de referência para uma propriedade
+	/// </summary>
+	protected void SetReferenceResolver<TReference>(Expression<Func<TModel, object>> propertyExpression, Func<string, IEnumerable<TReference>> referenceSource,	Func<string, TReference, bool> matchPredicate)
+	{
+		_referenceResolvers[propertyExpression] = referenceValue =>
+		{
+			var references = referenceSource(referenceValue);
+			return references.FirstOrDefault(r => matchPredicate(referenceValue, r));
+		};
+	}
+	/// <summary>
+	/// Define um resolvedor de referência para um cabeçalho específico
+	/// </summary>
+	protected void MapReference<TObject>(
+		string headerName,
+		Func<string, IEnumerable<TObject>> referenceSource,
+		Func<string, TObject, bool> matchPredicate)
+	{
+		_headerReferenceResolvers[headerName] = referenceValue =>
+		{
+			var references = referenceSource(referenceValue);
+			return references.FirstOrDefault(r => matchPredicate(referenceValue, r));
+		};
+	}
+	public bool TryResolveReference(string headerName, string referenceValue, out object resolvedObject)
+	{
+		if (_headerReferenceResolvers.TryGetValue(headerName, out var resolver))
+		{
+			resolvedObject = resolver(referenceValue);
+			return resolvedObject != null;
+		}
+		resolvedObject = null;
+		return false;
+	}
 }

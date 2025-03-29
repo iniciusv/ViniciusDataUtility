@@ -62,7 +62,21 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 
 			try
 			{
-				if (_headerMapper.TryGetProperty(header, out var propertySelector))
+				// Primeiro tenta resolver como referência
+				if (_headerMapper.TryResolveReference(header, value, out var reference))
+				{
+					var property = _headerMapper.GetMappings()
+						.FirstOrDefault(m => m.Key.Equals(header, StringComparison.OrdinalIgnoreCase))
+						.Value;
+
+					if (property != null)
+					{
+						var propertyInfo = GetPropertyInfo(model, property);
+						propertyInfo.SetValue(model, reference);
+					}
+				}
+				// Se não for referência, mapeia normalmente
+				else if (_headerMapper.TryGetProperty(header, out var propertySelector))
 				{
 					var propertyInfo = GetPropertyInfo(model, propertySelector);
 					SetPropertyValue(model, propertyInfo, value);
@@ -74,6 +88,7 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 				validationFailures.Add(new ValidationFailure(header, $"Falha na conversão: {ex.Message}"));
 			}
 		}
+
 
 		var validationResult = _validator.Validate(model);
 		if (!validationResult.IsValid)
