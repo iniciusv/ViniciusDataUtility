@@ -11,13 +11,16 @@ namespace DataUtility3.Transformers;
 public abstract class HeaderMapper<TModel> where TModel : class
 {
 	private readonly Dictionary<string, Expression<Func<TModel, object>>> _mappings;
+	private readonly Dictionary<Expression<Func<TModel, object>>, object> _staticValues;
 	private readonly string _mapperName;
 
 	protected HeaderMapper(string mapperName)
 	{
 		_mapperName = mapperName;
 		_mappings = new Dictionary<string, Expression<Func<TModel, object>>>(StringComparer.OrdinalIgnoreCase);
+		_staticValues = new Dictionary<Expression<Func<TModel, object>>, object>();
 	}
+
 
 	/// <summary>
 	/// Adiciona um mapeamento entre um cabeçalho e uma propriedade do modelo
@@ -65,4 +68,28 @@ public abstract class HeaderMapper<TModel> where TModel : class
 	/// Nome do mapeador (para identificação)
 	/// </summary>
 	public string MapperName => _mapperName;
+
+	/// <summary>
+	/// Define um valor estático para uma propriedade
+	/// </summary>
+	protected void SetStaticValue(Expression<Func<TModel, object>> propertyExpression, object value)
+	{
+		_staticValues[propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression))] = value;
+	}
+
+	/// <summary>
+	/// Aplica valores estáticos ao modelo
+	/// </summary>
+	public void ApplyStaticValues(TModel model)
+	{
+		foreach (var staticValue in _staticValues)
+		{
+			var property = (staticValue.Key.Body as MemberExpression)?.Member as System.Reflection.PropertyInfo;
+			if (property != null && property.CanWrite)
+			{
+				property.SetValue(model, staticValue.Value);
+			}
+		}
+	}
+
 }

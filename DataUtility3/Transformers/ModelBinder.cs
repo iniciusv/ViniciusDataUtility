@@ -11,40 +11,53 @@ using System.Threading.Tasks;
 
 namespace DataUtility3.Transformers;
 
+// Modificação no ModelBinder para aplicar os valores estáticos
 public class ModelBinder<TModel> where TModel : class, new()
 {
-	private readonly TableDataTransformer<TModel> Transformer;
+	private readonly TableDataTransformer<TModel> _transformer;
+	private readonly HeaderMapper<TModel> _headerMapper;
 
-	public ModelBinder(HeaderMapper<TModel> headerMapper,AbstractValidator<TModel> validator,ReaderConfig readerConfig)
+	public ModelBinder(
+		HeaderMapper<TModel> headerMapper,
+		AbstractValidator<TModel> validator,
+		ReaderConfig readerConfig)
 	{
-		if (!readerConfig.Converters.ContainsKey(typeof(decimal)))
-			readerConfig.Converters.Add(typeof(decimal), s => decimal.Parse(s, CultureInfo.InvariantCulture));
+		_headerMapper = headerMapper;
 
-		Transformer = new TableDataTransformer<TModel>(headerMapper, validator,	readerConfig);
+		if (!readerConfig.Converters.ContainsKey(typeof(decimal)))
+			readerConfig.Converters.Add(typeof(decimal),
+				s => decimal.Parse(s, CultureInfo.InvariantCulture));
+
+		_transformer = new TableDataTransformer<TModel>(
+			headerMapper,
+			validator,
+			readerConfig);
 	}
 
-	public (List<TModel> Models, List<string> Errors) Bind(SimpleTableData tableData)
+	public (List<TModel> Models, List<ReadLineResult<TModel>> LineResults) Bind(SimpleTableData tableData)
 	{
-		var errors = new List<string>();
-		var models = new List<TModel>();
+		var lineResults = new List<ReadLineResult<TModel>>();
+		var validModels = new List<TModel>();
 
-		try
+		if (tableData == null || tableData.Headers == null)
 		{
-			if (tableData == null || tableData.Headers == null)
+			return (validModels, lineResults);
+		}
+
+		var readResult = _transformer.Transform(tableData);
+
+		foreach (var lineResult in readResult.Results)
+		{
+			lineResults.Add(lineResult);
+
+			if (lineResult.IsValid && lineResult.Entity != null)
 			{
-				errors.Add("Dados da tabela inválidos");
-				return (models, errors);
+				// Aplica os valores estáticos antes de adicionar o modelo
+				_headerMapper.ApplyStaticValues(lineResult.Entity);
+				validModels.Add(lineResult.Entity);
 			}
-
-			models = Transformer.Transform(tableData)
-				.Where(model => model != null)
-				.ToList();
-		}
-		catch (Exception ex)
-		{
-			errors.Add($"Erro durante o binding: {ex.Message}");
 		}
 
-		return (models, errors);
+		return (validModels, lineResults);
 	}
 }

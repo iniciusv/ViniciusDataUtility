@@ -29,31 +29,31 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 		_readerConfig = readerConfig;
 	}
 
-	public IEnumerable<TModel> Transform(SimpleTableData tableData)
+	public ReadResult<TModel> Transform(SimpleTableData tableData)
 	{
+		var results = new List<ReadLineResult<TModel>>();
+
 		if (tableData == null || tableData.Headers == null || !tableData.Headers.Any())
 		{
-			yield break; // Retorna uma coleção vazia
+			return new ReadResult<TModel>(TransformationError.NoData);
 		}
 
-		var lineNumber = 1; // Começa em 1 porque o cabeçalho é linha 0
+		int lineNumber = 1; // Cabeçalho é linha 1
 
 		foreach (var row in tableData.Rows ?? Enumerable.Empty<List<string?>>())
 		{
 			lineNumber++;
-			var model = TransformRow(row, tableData.Headers, lineNumber);
-
-			if (model != null)
-			{
-				yield return model;
-			}
+			results.Add(TransformRow(row, tableData.Headers, lineNumber));
 		}
+
+		return new ReadResult<TModel>(results);
 	}
 
-	private TModel? TransformRow(List<string?> row, List<string> headers, int lineNumber)
+	private ReadLineResult<TModel> TransformRow(List<string?> row, List<string> headers, int lineNumber)
 	{
 		var model = new TModel();
-		bool hasErrors = false;
+		var errors = new List<TransformationError>();
+		var validationFailures = new List<ValidationFailure>();
 
 		for (int i = 0; i < Math.Min(headers.Count, row.Count); i++)
 		{
@@ -70,23 +70,23 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 			}
 			catch (Exception ex)
 			{
-				Console.WriteLine($"Erro na linha {lineNumber}, coluna '{header}': {ex.Message}");
-				hasErrors = true;
+				errors.Add(TransformationError.ConvertionFailed);
+				validationFailures.Add(new ValidationFailure(header, $"Falha na conversão: {ex.Message}"));
 			}
 		}
 
-		// Executa a validação FluentValidation
 		var validationResult = _validator.Validate(model);
 		if (!validationResult.IsValid)
 		{
-			foreach (var error in validationResult.Errors)
-			{
-				Console.WriteLine($"Erro de validação na linha {lineNumber}: {error.ErrorMessage}");
-			}
-			hasErrors = true;
+			errors.Add(TransformationError.ConvertionFailed);
+			validationFailures.AddRange(validationResult.Errors);
 		}
 
-		return hasErrors ? null : model;
+		return new ReadLineResult<TModel>(
+			lineNumber,
+			errors.Any() ? null : model,
+			errors,
+			validationFailures);
 	}
 
 	private PropertyInfo GetPropertyInfo(TModel model, Expression<Func<TModel, object>> propertySelector)
@@ -120,7 +120,6 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 			}
 			else
 			{
-				// Conversão padrão para tipos não registrados
 				var convertedValue = Convert.ChangeType(value, propertyInfo.PropertyType);
 				propertyInfo.SetValue(model, convertedValue);
 			}

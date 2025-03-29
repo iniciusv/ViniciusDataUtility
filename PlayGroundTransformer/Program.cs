@@ -1,14 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
-using System.Linq;
-using System.Text;
-
-using DataUtility3.Transformers;
-using DataUtility.Repository.Tables;
+﻿using DataUtility.Repository.Tables;
 using DataUtility3.Repository.Tables;
+using DataUtility3.Transformers;
 using PlayGroundTransformer;
+using System.Text;
 
 class Program
 {
@@ -16,7 +10,6 @@ class Program
 	{
 		const string filePath = @"C:\Config\User.csv";
 
-		// 1. Configuração do leitor CSV
 		var csvConfig = new CSVReaderConfig(
 			fieldSeparator: ";",
 			fieldMerger: "\"",
@@ -25,7 +18,6 @@ class Program
 			dateFormat: "dd/MM/yyyy",
 			decimalSeparator: ",");
 
-		// 2. Configuração do binder
 		var readerConfig = new ReaderConfig(
 			encoding: Encoding.UTF8,
 			dateFormat: "dd/MM/yyyy",
@@ -36,37 +28,36 @@ class Program
 			new UserValidator(),
 			readerConfig);
 
-		// 3. Leitura e processamento
 		try
 		{
-			// Ler arquivo CSV
 			var tableData = CSVProcessor.LoadAndConvertCSV(
 				Path.GetDirectoryName(filePath),
 				Path.GetFileName(filePath),
 				csvConfig);
 
-			// Fazer o binding
-			var result = binder.Bind(tableData);
-			var users = result.Models;
-			var errors = result.Errors;
+			var (users, lineResults) = binder.Bind(tableData);
 
-			// 4. Exibir resultados
-			Console.WriteLine("=== USUÁRIOS IMPORTADOS ===");
+			Console.WriteLine("=== USUÁRIOS VÁLIDOS ===");
 			foreach (var user in users)
 			{
-				Console.WriteLine($"• {user.ClientCode}: {user.GUID} | NCM: {user.NCM} | Criado em: {user.Created:dd/MM/yyyy}");
+				Console.WriteLine($"• {user.ClientCode}: {user.GUID}");
 			}
 
-			if (errors.Any())
+			var errorResults = lineResults.Where(r => !r.IsValid).ToList();
+			if (errorResults.Any())
 			{
-				Console.WriteLine("\n=== ERROS ===");
-				foreach (var error in errors)
+				Console.WriteLine("\n=== ERROS DETALHADOS ===");
+				foreach (var error in errorResults)
 				{
-					Console.WriteLine($"- {error}");
+					Console.WriteLine($"Linha {error.LineNumber}:");
+					foreach (var validationError in error.ValidationFailures)
+					{
+						Console.WriteLine($"- {validationError.PropertyName}: {validationError.ErrorMessage}");
+					}
 				}
 			}
 
-			Console.WriteLine($"\nResumo: {users.Count} usuários importados, {errors.Count} erros");
+			Console.WriteLine($"\nResumo: {users.Count} válidos, {errorResults.Count} linhas com erro");
 		}
 		catch (Exception ex)
 		{
