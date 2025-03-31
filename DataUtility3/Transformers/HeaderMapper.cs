@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 
@@ -99,7 +100,7 @@ public abstract class HeaderMapper<TModel> where TModel : class
 	/// <summary>
 	/// Define um resolvedor de referência para uma propriedade
 	/// </summary>
-	protected void SetReferenceResolver<TReference>(Expression<Func<TModel, object>> propertyExpression, Func<string, IEnumerable<TReference>> referenceSource,	Func<string, TReference, bool> matchPredicate)
+	protected void SetReferenceResolver<TReference>(Expression<Func<TModel, object>> propertyExpression, Func<string, IEnumerable<TReference>> referenceSource, Func<string, TReference, bool> matchPredicate)
 	{
 		_referenceResolvers[propertyExpression] = referenceValue =>
 		{
@@ -131,4 +132,127 @@ public abstract class HeaderMapper<TModel> where TModel : class
 		resolvedObject = null;
 		return false;
 	}
+	public virtual TModel CreateInstance()
+	{
+		return Activator.CreateInstance<TModel>();
+	}
+	public virtual void ApplySpecialMappings(TModel model, string header, string value)
+	{
+		// Pode ser sobrescrito por mapeadores específicos
+	}
+	/// <summary>
+	/// Mapeia uma linha de dados para o modelo
+	/// </summary>
+	public TModel MapRow(Dictionary<string, string> rowData)
+	{
+		var model = CreateInstance();
+
+		foreach (var kvp in rowData)
+		{
+			try
+			{
+				if (_headerReferenceResolvers.TryGetValue(kvp.Key, out var resolver))
+				{
+					// Resolve referência
+					var reference = resolver(kvp.Value);
+					if (reference != null)
+					{
+						var property = _mappings
+							.FirstOrDefault(m => m.Key.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase))
+							.Value;
+
+						if (property != null)
+						{
+							var propertyInfo = GetPropertyInfo(property);
+							propertyInfo.SetValue(model, reference);
+						}
+					}
+				}
+				else if (_mappings.TryGetValue(kvp.Key, out var propertyExpression))
+				{
+					// Mapeamento normal
+					var propertyInfo = GetPropertyInfo(propertyExpression);
+					SetPropertyValue(model, propertyInfo, kvp.Value);
+				}
+
+				ApplySpecialMappings(model, kvp.Key, kvp.Value);
+			}
+			catch (Exception ex)
+			{
+				throw new InvalidOperationException(
+					$"Erro ao mapear o campo '{kvp.Key}' com valor '{kvp.Value}'. {ex.Message}", ex);
+			}
+		}
+
+		ApplyStaticValues(model);
+		return model;
+	}
+
+	/// <summary>
+	/// Define o valor de uma propriedade com tratamento de conversão de tipos
+	/// </summary>
+	protected void SetPropertyValue(TModel model, PropertyInfo propertyInfo, string stringValue)
+	{
+		if (string.IsNullOrEmpty(stringValue))
+		{
+			if (propertyInfo.PropertyType.IsValueType &&
+				Nullable.GetUnderlyingType(propertyInfo.PropertyType) == null)
+			{
+				throw new InvalidOperationException(
+					$"Não é possível converter valor vazio para {propertyInfo.PropertyType.Name}");
+			}
+			return;
+		}
+
+		try
+		{
+			object value;
+
+			// Tratamento especial para tipos comuns
+			if (propertyInfo.PropertyType == typeof(string))
+			{
+				value = stringValue;
+			}
+			else if (propertyInfo.PropertyType == typeof(bool))
+			{
+				value = stringValue.Equals("SIM", StringComparison.OrdinalIgnoreCase);
+			}
+			else if (propertyInfo.PropertyType.IsEnum)
+			{
+				value = Enum.Parse(propertyInfo.PropertyType, stringValue, true);
+			}
+			else
+			{
+				// Conversão padrão para outros tipos
+				var underlyingType = Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType;
+				value = Convert.ChangeType(stringValue, underlyingType, CultureInfo.InvariantCulture);
+			}
+
+			propertyInfo.SetValue(model, value);
+		}
+		catch (Exception ex)
+		{
+			throw new InvalidOperationException(
+				$"Falha ao converter valor '{stringValue}' para {propertyInfo.PropertyType.Name}", ex);
+		}
+	}
+	/// <summary>
+	/// Obtém informações da propriedade a partir de uma expressão lambda
+	/// </summary>
+	protected PropertyInfo GetPropertyInfo(Expression<Func<TModel, object>> propertyExpression)
+	{
+		var member = propertyExpression.Body as MemberExpression;
+		if (member == null && propertyExpression.Body is UnaryExpression unary)
+		{
+			member = unary.Operand as MemberExpression;
+		}
+
+		if (member?.Member is PropertyInfo propertyInfo)
+		{
+			return propertyInfo;
+		}
+
+		throw new ArgumentException("A expressão deve referenciar uma propriedade", nameof(propertyExpression));
+	}
+
 }

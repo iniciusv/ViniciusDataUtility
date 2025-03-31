@@ -51,7 +51,7 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 
 	private ReadLineResult<TModel> TransformRow(List<string?> row, List<string> headers, int lineNumber)
 	{
-		var model = new TModel();
+		var model = _headerMapper.CreateInstance();
 		var errors = new List<TransformationError>();
 		var validationFailures = new List<ValidationFailure>();
 
@@ -62,7 +62,6 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 
 			try
 			{
-				// Primeiro tenta resolver como referência
 				if (_headerMapper.TryResolveReference(header, value, out var reference))
 				{
 					var property = _headerMapper.GetMappings()
@@ -75,12 +74,14 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 						propertyInfo.SetValue(model, reference);
 					}
 				}
-				// Se não for referência, mapeia normalmente
+
 				else if (_headerMapper.TryGetProperty(header, out var propertySelector))
 				{
 					var propertyInfo = GetPropertyInfo(model, propertySelector);
 					SetPropertyValue(model, propertyInfo, value);
 				}
+				// Chama ApplySpecialMappings para cada campo processado
+				_headerMapper.ApplySpecialMappings(model, header, value);
 			}
 			catch (Exception ex)
 			{
@@ -97,11 +98,7 @@ public class TableDataTransformer<TModel> where TModel : class, new()
 			validationFailures.AddRange(validationResult.Errors);
 		}
 
-		return new ReadLineResult<TModel>(
-			lineNumber,
-			errors.Any() ? null : model,
-			errors,
-			validationFailures);
+		return new ReadLineResult<TModel>(lineNumber,errors.Any() ? null : model,errors,validationFailures);
 	}
 
 	private PropertyInfo GetPropertyInfo(TModel model, Expression<Func<TModel, object>> propertySelector)
