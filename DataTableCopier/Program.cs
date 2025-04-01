@@ -10,8 +10,6 @@
 //		try
 //		{
 //			// Configurações fixas
-//			const string sourceConnStr = "Data Source=tars.database.windows.net;Initial Catalog=Slartibartfast-qa-2;Persist Security Info=True;User ID=SFB;Password=Slarti@142536@*;Connection Timeout=100;MultipleActiveResultSets=true;TrustServerCertificate=true";
-//			const string targetConnStr = "Data Source=tars.database.windows.net;Initial Catalog=Slartibartfast-dev;Persist Security Info=True;User ID=SFB;Password=Slarti@142536@*;Connection Timeout=100;MultipleActiveResultSets=true;TrustServerCertificate=true";
 //			const string tableName = "EnvelopeOpenerPolicy";
 //			const string condition = "TenantID = 1"; // Nova cláusula WHERE
 //			const bool replaceExisting = true;
