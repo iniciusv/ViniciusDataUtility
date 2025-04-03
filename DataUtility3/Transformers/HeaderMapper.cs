@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
@@ -61,13 +62,36 @@ namespace DataUtility3.Transformers
 			StaticValues[propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression))] = value;
 		}
 
+		protected void SetDynamicValue(Expression<Func<TModel, object>> propertyExpression, Func<object> valueFactory)
+		{
+			StaticValues[propertyExpression] = valueFactory;
+		}
+
 		public void ApplyStaticValues(TModel model)
 		{
+			if (model == null) return;
+
 			foreach (var (propertyExpression, value) in StaticValues)
 			{
-				if (PropertyCache.TryGetValue(propertyExpression, out var propertyInfo) && propertyInfo.CanWrite)
+				try
 				{
-					propertyInfo.SetValue(model, value);
+					if (!PropertyCache.TryGetValue(propertyExpression, out var propertyInfo))
+					{
+						propertyInfo = GetPropertyInfo(propertyExpression);
+						PropertyCache[propertyExpression] = propertyInfo;
+					}
+
+					if (propertyInfo != null && propertyInfo.CanWrite)
+					{
+						// Verifica se o valor precisa ser recalculado (como Guid.NewGuid())
+						var actualValue = value is Func<object> func ? func() : value;
+						propertyInfo.SetValue(model, actualValue);
+					}
+				}
+				catch (Exception ex)
+				{
+					// Logar o erro para depuração
+					Debug.WriteLine($"Error setting static value for {propertyExpression}: {ex.Message}");
 				}
 			}
 		}

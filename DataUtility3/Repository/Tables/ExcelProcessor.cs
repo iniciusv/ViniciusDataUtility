@@ -39,18 +39,15 @@ public static class ExcelProcessor
 		var simpleData = new SimpleTableData();
 		var sheet = workbook.Worksheet(1);
 
-		// Encontra a primeira linha usada começando da initialRow
 		var firstRowUsed = sheet.Row(initialRow);
 		var rowsUsed = sheet.Rows(initialRow, sheet.LastRowUsed().RowNumber());
 
-		// Processa o cabeçalho
 		simpleData.Headers = firstRowUsed.CellsUsed()
 								.Select(c => c.GetValue<string>())
 								.ToList();
 
-		// Processa as linhas de dados (começando da linha após o cabeçalho)
 		int numberOfHeaders = simpleData.Headers.Count;
-		simpleData.Rows = rowsUsed.Skip(1) // Pula a linha do cabeçalho
+		simpleData.Rows = rowsUsed.Skip(1)
 							.Select(row => {
 								var rowList = new List<string?>(new string[numberOfHeaders]);
 								var cells = row.CellsUsed().ToList();
@@ -67,9 +64,6 @@ public static class ExcelProcessor
 
 		return simpleData;
 	}
-
-
-	
 
 	public static void CreateExcelFile(string folderPath, string fileName, SimpleTableData data)
 	{

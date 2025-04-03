@@ -99,40 +99,54 @@ public class DataInserter
 		string values = string.Join(", ", data.Headers.Select(header => $"@{header}"));
 
 		// Adiciona as colunas de data com GETDATE()
-		columns += ", [Created], [LastModifield]";
-		values += ", GETDATE(), GETDATE()";
+		columns += ", [Created]";
+		values += ", GETDATE()";
 
 		string query = $"INSERT INTO [{data.TableName}] ({columns}) VALUES ({values})";
+
 
 		using (var command = new SqlCommand(query, _connection))
 		{
 			foreach (var row in data.Rows)
 			{
 				command.Parameters.Clear();
-				StringBuilder queryWithValues = new StringBuilder(query);
+				StringBuilder formattedQuery = new StringBuilder();
+				formattedQuery.AppendLine($"INSERT INTO [{data.TableName}]");
+				formattedQuery.AppendLine("(");
 
+				// Adiciona colunas formatadas
+				for (int i = 0; i < data.Headers.Count; i++)
+				{
+					string comma = i < data.Headers.Count - 1 ? "," : "";
+					formattedQuery.AppendLine($"    [{data.Headers[i]}]{comma}");
+				}
+				formattedQuery.AppendLine("    [Created]");
+				formattedQuery.AppendLine(")");
+				formattedQuery.AppendLine("VALUES");
+				formattedQuery.AppendLine("(");
+
+				// Prepara os valores para formatação
 				for (int i = 0; i < data.Headers.Count; i++)
 				{
 					string columnName = data.Headers[i];
 					string value = row[i];
-
-					// Obtém o tipo de dado da coluna a partir do schema
-					string dataType = data.Schema?.DataTypes?[i] ?? "nvarchar"; // Padrão para nvarchar se não houver schema
-
-					// Converte o valor para o tipo de dado correto
+					string dataType = data.Schema?.DataTypes?[i] ?? "nvarchar";
 					object convertedValue = ConvertValueToDataType(value, dataType);
-
-					// Adiciona o valor ao comando SQL
-					command.Parameters.AddWithValue($"@{columnName}", convertedValue ?? DBNull.Value);
-
-					// Formata o valor para exibição na query final
 					string formattedValue = FormatValueForQuery(convertedValue, dataType);
-					queryWithValues.Replace($"@{columnName}", formattedValue);
+
+					string comma = i < data.Headers.Count - 1 ? "," : "";
+					formattedQuery.AppendLine($"    {formattedValue}{comma} -- [{columnName}]");
+
+					command.Parameters.AddWithValue($"@{columnName}", convertedValue ?? DBNull.Value);
 				}
 
-				// Imprime a query final com os valores substituídos
-				Console.WriteLine("Query final com valores:");
-				Console.WriteLine(queryWithValues.ToString());
+				// Adiciona o valor para Created
+				formattedQuery.AppendLine("    GETDATE() -- [Created]");
+				formattedQuery.AppendLine(");");
+
+				// Imprime a query formatada
+				Console.WriteLine("\nQuery formatada:");
+				Console.WriteLine(formattedQuery.ToString());
 
 				// Executa a query no banco de dados
 				command.ExecuteNonQuery();
@@ -187,7 +201,8 @@ public class DataInserter
 			case "decimal":
 			case "numeric":
 			case "float":
-				return value.ToString(); // Números são inseridos diretamente
+				// Garante que números decimais usem ponto como separador
+				return value.ToString().Replace(',', '.');
 			case "datetime":
 				return $"'{((DateTime)value).ToString("yyyy-MM-dd HH:mm:ss")}'"; // Datas são formatadas
 			case "bit":
