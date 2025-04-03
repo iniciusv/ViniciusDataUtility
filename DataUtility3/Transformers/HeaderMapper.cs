@@ -1,258 +1,253 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
 
-namespace DataUtility3.Transformers;
-
-/// <summary>
-/// Mapeador de cabeçalhos para propriedades de um modelo
-/// </summary>
-/// <typeparam name="TModel">Tipo do modelo que será mapeado</typeparam>
-public abstract class HeaderMapper<TModel> where TModel : class
+namespace DataUtility3.Transformers
 {
-	private readonly Dictionary<string, Expression<Func<TModel, object>>> _mappings;
-	private readonly Dictionary<Expression<Func<TModel, object>>, object> _staticValues;
-	private readonly Dictionary<Expression<Func<TModel, object>>, Func<string, object>> _referenceResolvers = new();
-
-	private readonly Dictionary<string, Func<string, object>> _headerReferenceResolvers = new();
-	private readonly string _mapperName;
-
-	protected HeaderMapper(string mapperName)
+	public abstract class HeaderMapper<TModel> where TModel : class
 	{
-		_mapperName = mapperName;
-		_mappings = new Dictionary<string, Expression<Func<TModel, object>>>(StringComparer.OrdinalIgnoreCase);
-		_staticValues = new Dictionary<Expression<Func<TModel, object>>, object>();
-	}
+		private readonly ConcurrentDictionary<string, Expression<Func<TModel, object>>> Mappings;
+		private readonly ConcurrentDictionary<Expression<Func<TModel, object>>, object> StaticValues;
+		private readonly ConcurrentDictionary<string, Func<string, object>> HeaderReferenceResolvers;
+		private readonly string MapperName;
 
+		private static readonly ConcurrentDictionary<Expression<Func<TModel, object>>, PropertyInfo> PropertyCache = new();
 
-	/// <summary>
-	/// Adiciona um mapeamento entre um cabeçalho e uma propriedade do modelo
-	/// </summary>
-	/// <param name="headerName">Nome do cabeçalho no arquivo</param>
-	/// <param name="propertyExpression">Expressão lambda para acessar a propriedade</param>
-	protected void Map(string headerName, Expression<Func<TModel, object>> propertyExpression)
-	{
-		if (string.IsNullOrWhiteSpace(headerName))
+		protected HeaderMapper(string mapperName)
 		{
-			throw new ArgumentException("Nome do cabeçalho não pode ser vazio", nameof(headerName));
+			MapperName = mapperName;
+			Mappings = new ConcurrentDictionary<string, Expression<Func<TModel, object>>>(StringComparer.OrdinalIgnoreCase);
+			StaticValues = new ConcurrentDictionary<Expression<Func<TModel, object>>, object>();
+			HeaderReferenceResolvers = new ConcurrentDictionary<string, Func<string, object>>(StringComparer.OrdinalIgnoreCase);
 		}
 
-		_mappings[headerName] = propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression));
-	}
 
-	/// <summary>
-	/// Tenta obter a expressão da propriedade associada a um cabeçalho
-	/// </summary>
-	/// <param name="headerName">Nome do cabeçalho</param>
-	/// <param name="propertyExpression">Expressão da propriedade (saída)</param>
-	/// <returns>True se o cabeçalho foi encontrado</returns>
-	public bool TryGetProperty(string headerName, out Expression<Func<TModel, object>> propertyExpression)
-	{
-		return _mappings.TryGetValue(headerName, out propertyExpression);
-	}
-
-	/// <summary>
-	/// Obtém todos os mapeamentos configurados
-	/// </summary>
-	public IEnumerable<KeyValuePair<string, Expression<Func<TModel, object>>>> GetMappings()
-	{
-		return _mappings;
-	}
-
-	/// <summary>
-	/// Verifica se um cabeçalho específico está mapeado
-	/// </summary>
-	public bool ContainsHeader(string headerName)
-	{
-		return _mappings.ContainsKey(headerName);
-	}
-
-	/// <summary>
-	/// Nome do mapeador (para identificação)
-	/// </summary>
-	public string MapperName => _mapperName;
-
-	/// <summary>
-	/// Define um valor estático para uma propriedade
-	/// </summary>
-	protected void SetStaticValue(Expression<Func<TModel, object>> propertyExpression, object value)
-	{
-		_staticValues[propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression))] = value;
-	}
-
-	/// <summary>
-	/// Aplica valores estáticos ao modelo
-	/// </summary>
-	public void ApplyStaticValues(TModel model)
-	{
-		foreach (var staticValue in _staticValues)
+		/// <summary>
+		/// Adiciona um mapeamento entre um cabeçalho e uma propriedade do modelo
+		/// </summary>
+		/// <param name="headerName">Nome do cabeçalho no arquivo</param>
+		/// <param name="propertyExpression">Expressão lambda para acessar a propriedade</param>
+		protected void Map(string headerName, Expression<Func<TModel, object>> propertyExpression)
 		{
-			var property = (staticValue.Key.Body as MemberExpression)?.Member as System.Reflection.PropertyInfo;
-			if (property != null && property.CanWrite)
+			if (string.IsNullOrWhiteSpace(headerName))
+				throw new ArgumentException("Nome do cabeçalho não pode ser vazio", nameof(headerName));
+
+			Mappings[headerName] = propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression));
+
+			// Pré-cache da PropertyInfo
+			if (!PropertyCache.ContainsKey(propertyExpression))
 			{
-				property.SetValue(model, staticValue.Value);
+				PropertyCache[propertyExpression] = GetPropertyInfo(propertyExpression);
 			}
 		}
-	}
 
-	/// <summary>
-	/// Define um resolvedor de referência para uma propriedade
-	/// </summary>
-	protected void SetReferenceResolver<TReference>(Expression<Func<TModel, object>> propertyExpression, Func<string, IEnumerable<TReference>> referenceSource, Func<string, TReference, bool> matchPredicate)
-	{
-		_referenceResolvers[propertyExpression] = referenceValue =>
+
+		/// <summary>
+		/// Tenta obter a expressão da propriedade associada a um cabeçalho
+		/// </summary>
+		/// <param name="headerName">Nome do cabeçalho</param>
+		/// <param name="propertyExpression">Expressão da propriedade (saída)</param>
+		/// <returns>True se o cabeçalho foi encontrado</returns>
+		public bool TryGetProperty(string headerName, out Expression<Func<TModel, object>> propertyExpression)
 		{
-			var references = referenceSource(referenceValue);
-			return references.FirstOrDefault(r => matchPredicate(referenceValue, r));
-		};
-	}
-	/// <summary>
-	/// Define um resolvedor de referência para um cabeçalho específico
-	/// </summary>
-	protected void MapReference<TObject>(
-		string headerName,
-		Func<string, IEnumerable<TObject>> referenceSource,
-		Func<string, TObject, bool> matchPredicate)
-	{
-		_headerReferenceResolvers[headerName] = referenceValue =>
-		{
-			var references = referenceSource(referenceValue);
-			return references.FirstOrDefault(r => matchPredicate(referenceValue, r));
-		};
-	}
-	public bool TryResolveReference(string headerName, string referenceValue, out object resolvedObject)
-	{
-		if (_headerReferenceResolvers.TryGetValue(headerName, out var resolver))
-		{
-			resolvedObject = resolver(referenceValue);
-			return resolvedObject != null;
+			return Mappings.TryGetValue(headerName, out propertyExpression);
 		}
-		resolvedObject = null;
-		return false;
-	}
-	public virtual TModel CreateInstance()
-	{
-		return Activator.CreateInstance<TModel>();
-	}
-	public virtual void ApplySpecialMappings(TModel model, string header, string value)
-	{
-		// Pode ser sobrescrito por mapeadores específicos
-	}
-	/// <summary>
-	/// Mapeia uma linha de dados para o modelo
-	/// </summary>
-	public TModel MapRow(Dictionary<string, string> rowData)
-	{
-		var model = CreateInstance();
 
-		foreach (var kvp in rowData)
+		protected void SetStaticValue(Expression<Func<TModel, object>> propertyExpression, object value)
 		{
+			StaticValues[propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression))] = value;
+		}
+
+		public void ApplyStaticValues(TModel model)
+		{
+			foreach (var (propertyExpression, value) in StaticValues)
+			{
+				if (PropertyCache.TryGetValue(propertyExpression, out var propertyInfo) && propertyInfo.CanWrite)
+				{
+					propertyInfo.SetValue(model, value);
+				}
+			}
+		}
+
+		protected void MapReference<TObject>(
+			string headerName,
+			Func<string, IEnumerable<TObject>> referenceSource,
+			Func<string, TObject, bool> matchPredicate)
+		{
+			HeaderReferenceResolvers[headerName] = referenceValue =>
+				referenceSource(referenceValue).FirstOrDefault(r => matchPredicate(referenceValue, r));
+		}
+
+		public bool TryResolveReference(string headerName, string referenceValue, out object resolvedObject)
+		{
+			if (HeaderReferenceResolvers.TryGetValue(headerName, out var resolver))
+			{
+				resolvedObject = resolver(referenceValue);
+				return resolvedObject != null;
+			}
+			resolvedObject = null;
+			return false;
+		}
+
+		public virtual TModel CreateInstance() => Activator.CreateInstance<TModel>();
+
+		public virtual void ApplySpecialMappings(TModel model, string header, string value) { }
+
+		public TModel MapRow(Dictionary<string, string> rowData)
+		{
+			var model = CreateInstance();
+
+			foreach (var (key, value) in rowData)
+			{
+				try
+				{
+					ProcessField(model, key, value);
+				}
+				catch (Exception ex)
+				{
+					throw new InvalidOperationException($"Erro ao mapear o campo '{key}' com valor '{value}'. {ex.Message}", ex);
+				}
+			}
+
+			ApplyStaticValues(model);
+			return model;
+		}
+
+		private void ProcessField(TModel model, string header, string value)
+		{
+			if (HeaderReferenceResolvers.TryGetValue(header, out var resolver))
+			{
+				ProcessReferenceField(model, header, resolver(value));
+			}
+			else if (Mappings.TryGetValue(header, out var propertyExpression))
+			{
+				ProcessRegularField(model, propertyExpression, value);
+			}
+
+			ApplySpecialMappings(model, header, value);
+		}
+
+		private void ProcessReferenceField(TModel model, string header, object reference)
+		{
+			if (reference == null) return;
+
+			if (Mappings.TryGetValue(header, out var propertyExpression) &&
+				PropertyCache.TryGetValue(propertyExpression, out var propertyInfo))
+			{
+				propertyInfo.SetValue(model, reference);
+			}
+		}
+
+		private void ProcessRegularField(TModel model, Expression<Func<TModel, object>> propertyExpression, string value)
+		{
+			if (!PropertyCache.TryGetValue(propertyExpression, out var propertyInfo)) return;
+
+			if (string.IsNullOrEmpty(value))
+			{
+				if (propertyInfo.PropertyType.IsValueType &&
+					Nullable.GetUnderlyingType(propertyInfo.PropertyType) == null)
+				{
+					throw new InvalidOperationException(
+						$"Não é possível converter valor vazio para {propertyInfo.PropertyType.Name}");
+				}
+				return;
+			}
+
+			var convertedValue = ConvertValue(propertyInfo.PropertyType, value);
+			propertyInfo.SetValue(model, convertedValue);
+		}
+
+		private static object ConvertValue(Type targetType, string value)
+		{
+			if (targetType == typeof(string)) return value;
+			if (targetType == typeof(bool)) return value.Equals("SIM", StringComparison.OrdinalIgnoreCase);
+			if (targetType.IsEnum) return Enum.Parse(targetType, value, true);
+
+			var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+			return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
+		}
+
+		protected static PropertyInfo GetPropertyInfo(Expression<Func<TModel, object>> propertyExpression)
+		{
+			var member = propertyExpression.Body switch
+			{
+				MemberExpression m => m,
+				UnaryExpression { Operand: MemberExpression m } => m,
+				_ => throw new ArgumentException("A expressão deve referenciar uma propriedade", nameof(propertyExpression))
+			};
+
+			return (PropertyInfo)member.Member;
+		}
+    
+
+		/// <summary>
+		/// Obtém todos os mapeamentos configurados
+		/// </summary>
+		public IEnumerable<KeyValuePair<string, Expression<Func<TModel, object>>>> GetMappings()
+		{
+			return Mappings;
+		}
+
+		/// <summary>
+		/// Verifica se um cabeçalho específico está mapeado
+		/// </summary>
+		public bool ContainsHeader(string headerName)
+		{
+			return Mappings.ContainsKey(headerName);
+		}
+
+
+
+		/// <summary>
+		/// Define o valor de uma propriedade com tratamento de conversão de tipos
+		/// </summary>
+		protected void SetPropertyValue(TModel model, PropertyInfo propertyInfo, string stringValue)
+		{
+			if (string.IsNullOrEmpty(stringValue))
+			{
+				if (propertyInfo.PropertyType.IsValueType &&
+					Nullable.GetUnderlyingType(propertyInfo.PropertyType) == null)
+				{
+					throw new InvalidOperationException(
+						$"Não é possível converter valor vazio para {propertyInfo.PropertyType.Name}");
+				}
+				return;
+			}
+
 			try
 			{
-				if (_headerReferenceResolvers.TryGetValue(kvp.Key, out var resolver))
-				{
-					// Resolve referência
-					var reference = resolver(kvp.Value);
-					if (reference != null)
-					{
-						var property = _mappings
-							.FirstOrDefault(m => m.Key.Equals(kvp.Key, StringComparison.OrdinalIgnoreCase))
-							.Value;
+				object value;
 
-						if (property != null)
-						{
-							var propertyInfo = GetPropertyInfo(property);
-							propertyInfo.SetValue(model, reference);
-						}
-					}
-				}
-				else if (_mappings.TryGetValue(kvp.Key, out var propertyExpression))
+				// Tratamento especial para tipos comuns
+				if (propertyInfo.PropertyType == typeof(string))
 				{
-					// Mapeamento normal
-					var propertyInfo = GetPropertyInfo(propertyExpression);
-					SetPropertyValue(model, propertyInfo, kvp.Value);
+					value = stringValue;
+				}
+				else if (propertyInfo.PropertyType == typeof(bool))
+				{
+					value = stringValue.Equals("SIM", StringComparison.OrdinalIgnoreCase);
+				}
+				else if (propertyInfo.PropertyType.IsEnum)
+				{
+					value = Enum.Parse(propertyInfo.PropertyType, stringValue, true);
+				}
+				else
+				{
+					// Conversão padrão para outros tipos
+					var underlyingType = Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType;
+					value = Convert.ChangeType(stringValue, underlyingType, CultureInfo.InvariantCulture);
 				}
 
-				ApplySpecialMappings(model, kvp.Key, kvp.Value);
+				propertyInfo.SetValue(model, value);
 			}
 			catch (Exception ex)
 			{
 				throw new InvalidOperationException(
-					$"Erro ao mapear o campo '{kvp.Key}' com valor '{kvp.Value}'. {ex.Message}", ex);
+					$"Falha ao converter valor '{stringValue}' para {propertyInfo.PropertyType.Name}", ex);
 			}
-		}
-
-		ApplyStaticValues(model);
-		return model;
-	}
-
-	/// <summary>
-	/// Define o valor de uma propriedade com tratamento de conversão de tipos
-	/// </summary>
-	protected void SetPropertyValue(TModel model, PropertyInfo propertyInfo, string stringValue)
-	{
-		if (string.IsNullOrEmpty(stringValue))
-		{
-			if (propertyInfo.PropertyType.IsValueType &&
-				Nullable.GetUnderlyingType(propertyInfo.PropertyType) == null)
-			{
-				throw new InvalidOperationException(
-					$"Não é possível converter valor vazio para {propertyInfo.PropertyType.Name}");
-			}
-			return;
-		}
-
-		try
-		{
-			object value;
-
-			// Tratamento especial para tipos comuns
-			if (propertyInfo.PropertyType == typeof(string))
-			{
-				value = stringValue;
-			}
-			else if (propertyInfo.PropertyType == typeof(bool))
-			{
-				value = stringValue.Equals("SIM", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (propertyInfo.PropertyType.IsEnum)
-			{
-				value = Enum.Parse(propertyInfo.PropertyType, stringValue, true);
-			}
-			else
-			{
-				// Conversão padrão para outros tipos
-				var underlyingType = Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType;
-				value = Convert.ChangeType(stringValue, underlyingType, CultureInfo.InvariantCulture);
-			}
-
-			propertyInfo.SetValue(model, value);
-		}
-		catch (Exception ex)
-		{
-			throw new InvalidOperationException(
-				$"Falha ao converter valor '{stringValue}' para {propertyInfo.PropertyType.Name}", ex);
 		}
 	}
-	/// <summary>
-	/// Obtém informações da propriedade a partir de uma expressão lambda
-	/// </summary>
-	protected PropertyInfo GetPropertyInfo(Expression<Func<TModel, object>> propertyExpression)
-	{
-		var member = propertyExpression.Body as MemberExpression;
-		if (member == null && propertyExpression.Body is UnaryExpression unary)
-		{
-			member = unary.Operand as MemberExpression;
-		}
-
-		if (member?.Member is PropertyInfo propertyInfo)
-		{
-			return propertyInfo;
-		}
-
-		throw new ArgumentException("A expressão deve referenciar uma propriedade", nameof(propertyExpression));
-	}
-
 }
