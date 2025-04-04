@@ -27,6 +27,10 @@ public class ReaderConfig
 		Converters.Add(typeof(DateOnly), s => DateOnly.ParseExact(s, dateFormat));
 		Converters.Add(typeof(DateOnly?), s => DateOnly.ParseExact(s, dateFormat));
 	}
+	public ReaderConfig()
+	{
+		
+	}
 
 
 	/// <summary>
