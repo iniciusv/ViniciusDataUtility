@@ -5,57 +5,56 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace DataUtility3.Transformers
+namespace DataUtility3.Transformers;
+
+public class ModelBinder<TModel> where TModel : class, new()
 {
-	public class ModelBinder<TModel> where TModel : class, new()
+	private readonly TableDataTransformer<TModel> Transformer;
+	private readonly HeaderMapper<TModel> HeaderMapper;
+
+	public ModelBinder(
+		HeaderMapper<TModel> headerMapper,
+		AbstractValidator<TModel> validator,
+		ReaderConfig readerConfig)
 	{
-		private readonly TableDataTransformer<TModel> _transformer;
-		private readonly HeaderMapper<TModel> _headerMapper;
+		HeaderMapper = headerMapper ?? throw new ArgumentNullException(nameof(headerMapper));
 
-		public ModelBinder(
-			HeaderMapper<TModel> headerMapper,
-			AbstractValidator<TModel> validator,
-			ReaderConfig readerConfig)
+		// Configuração padrão para decimal se não existir
+		readerConfig.Converters.TryAdd(typeof(decimal),
+			s => decimal.Parse(s, CultureInfo.InvariantCulture));
+
+		Transformer = new TableDataTransformer<TModel>(
+			headerMapper,
+			validator,
+			readerConfig);
+	}
+
+	public (List<TModel> Models, List<ReadLineResult<TModel>> LineResults) Bind(SimpleTableData tableData)
+	{
+		if (tableData?.Headers == null)
+			return (new List<TModel>(), new List<ReadLineResult<TModel>>());
+
+		var readResult = Transformer.Transform(tableData);
+		return ProcessResults(readResult.Results);
+	}
+
+	private (List<TModel> Models, List<ReadLineResult<TModel>> LineResults) ProcessResults(
+		IEnumerable<ReadLineResult<TModel>> results)
+	{
+		var validModels = new List<TModel>();
+		var lineResults = new List<ReadLineResult<TModel>>();
+
+		foreach (var lineResult in results)
 		{
-			_headerMapper = headerMapper ?? throw new ArgumentNullException(nameof(headerMapper));
+			lineResults.Add(lineResult);
 
-			// Configuração padrão para decimal se não existir
-			readerConfig.Converters.TryAdd(typeof(decimal),
-				s => decimal.Parse(s, CultureInfo.InvariantCulture));
-
-			_transformer = new TableDataTransformer<TModel>(
-				headerMapper,
-				validator,
-				readerConfig);
-		}
-
-		public (List<TModel> Models, List<ReadLineResult<TModel>> LineResults) Bind(SimpleTableData tableData)
-		{
-			if (tableData?.Headers == null)
-				return (new List<TModel>(), new List<ReadLineResult<TModel>>());
-
-			var readResult = _transformer.Transform(tableData);
-			return ProcessResults(readResult.Results);
-		}
-
-		private (List<TModel> Models, List<ReadLineResult<TModel>> LineResults) ProcessResults(
-			IEnumerable<ReadLineResult<TModel>> results)
-		{
-			var validModels = new List<TModel>();
-			var lineResults = new List<ReadLineResult<TModel>>();
-
-			foreach (var lineResult in results)
+			if (lineResult.IsValid && lineResult.Entity != null)
 			{
-				lineResults.Add(lineResult);
-
-				if (lineResult.IsValid && lineResult.Entity != null)
-				{
-					_headerMapper.ApplyStaticValues(lineResult.Entity);
-					validModels.Add(lineResult.Entity);
-				}
+				HeaderMapper.ApplyStaticValues(lineResult.Entity);
+				validModels.Add(lineResult.Entity);
 			}
-
-			return (validModels, lineResults);
 		}
+
+		return (validModels, lineResults);
 	}
 }
