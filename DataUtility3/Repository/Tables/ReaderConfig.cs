@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DataUtility3.Transformers;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -26,6 +27,9 @@ public class ReaderConfig
 		Converters.Add(typeof(decimal?), s => decimal.Parse(s, NumberFormatInfo));
 		Converters.Add(typeof(DateOnly), s => DateOnly.ParseExact(s, dateFormat));
 		Converters.Add(typeof(DateOnly?), s => DateOnly.ParseExact(s, dateFormat));
+		//Converters.Add(typeof(decimal), s => NumberParser.ParseDecimal(s));
+		//Converters.Add(typeof(double), s => NumberParser.ParseDouble(s));
+		Converters.Add(typeof(float), s => float.Parse(s, NumberStyles.Any, CultureInfo.InvariantCulture));
 	}
 	public ReaderConfig()
 	{

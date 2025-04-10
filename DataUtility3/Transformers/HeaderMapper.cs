@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace DataUtility3.Transformers;
 
@@ -25,12 +26,6 @@ public abstract class HeaderMapper<TModel> where TModel : class
 		HeaderReferenceResolvers = new ConcurrentDictionary<string, Func<string, object>>(StringComparer.OrdinalIgnoreCase);
 	}
 
-
-	/// <summary>
-	/// Adiciona um mapeamento entre um cabeçalho e uma propriedade do modelo
-	/// </summary>
-	/// <param name="headerName">Nome do cabeçalho no arquivo</param>
-	/// <param name="propertyExpression">Expressão lambda para acessar a propriedade</param>
 	protected void Map(string headerName, Expression<Func<TModel, object>> propertyExpression)
 	{
 		if (string.IsNullOrWhiteSpace(headerName))
@@ -38,20 +33,12 @@ public abstract class HeaderMapper<TModel> where TModel : class
 
 		Mappings[headerName] = propertyExpression ?? throw new ArgumentNullException(nameof(propertyExpression));
 
-		// Pré-cache da PropertyInfo
 		if (!PropertyCache.ContainsKey(propertyExpression))
 		{
 			PropertyCache[propertyExpression] = GetPropertyInfo(propertyExpression);
 		}
 	}
 
-
-	/// <summary>
-	/// Tenta obter a expressão da propriedade associada a um cabeçalho
-	/// </summary>
-	/// <param name="headerName">Nome do cabeçalho</param>
-	/// <param name="propertyExpression">Expressão da propriedade (saída)</param>
-	/// <returns>True se o cabeçalho foi encontrado</returns>
 	public bool TryGetProperty(string headerName, out Expression<Func<TModel, object>> propertyExpression)
 	{
 		return Mappings.TryGetValue(headerName, out propertyExpression);
@@ -184,15 +171,6 @@ public abstract class HeaderMapper<TModel> where TModel : class
 		propertyInfo.SetValue(model, convertedValue);
 	}
 
-	private static object ConvertValue(Type targetType, string value)
-	{
-		if (targetType == typeof(string)) return value;
-		if (targetType == typeof(bool)) return value.Equals("SIM", StringComparison.OrdinalIgnoreCase);
-		if (targetType.IsEnum) return Enum.Parse(targetType, value, true);
-
-		var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
-		return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
-	}
 
 	protected static PropertyInfo GetPropertyInfo(Expression<Func<TModel, object>> propertyExpression)
 	{
@@ -205,72 +183,71 @@ public abstract class HeaderMapper<TModel> where TModel : class
 
 		return (PropertyInfo)member.Member;
 	}
-    
 
-	/// <summary>
-	/// Obtém todos os mapeamentos configurados
-	/// </summary>
 	public IEnumerable<KeyValuePair<string, Expression<Func<TModel, object>>>> GetMappings()
 	{
 		return Mappings;
 	}
 
-	/// <summary>
-	/// Verifica se um cabeçalho específico está mapeado
-	/// </summary>
-	public bool ContainsHeader(string headerName)
+
+	private static object ConvertValue(Type targetType, string value)
 	{
-		return Mappings.ContainsKey(headerName);
+		if (targetType == typeof(string)) return value;
+		if (targetType == typeof(bool)) return value.Equals("SIM", StringComparison.OrdinalIgnoreCase);
+		if (targetType.IsEnum) return Enum.Parse(targetType, value, true);
+
+		var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+		// Tratamento especial para números decimais
+		if (underlyingType == typeof(decimal))
+		{
+			return ParseDecimal(value);
+		}
+		else if (underlyingType == typeof(double))
+		{
+			return ParseDouble(value);
+		}
+
+		return Convert.ChangeType(value, underlyingType, CultureInfo.InvariantCulture);
 	}
 
-
-
-	/// <summary>
-	/// Define o valor de uma propriedade com tratamento de conversão de tipos
-	/// </summary>
-	protected void SetPropertyValue(TModel model, PropertyInfo propertyInfo, string stringValue)
+	private static decimal ParseDecimal(string value)
 	{
-		if (string.IsNullOrEmpty(stringValue))
+		// Remove espaços e caracteres não numéricos (exceto ponto e vírgula)
+		value = Regex.Replace(value.Trim(), @"[^\d.,-]", "");
+
+		// Verifica se o último separador é o decimal (para casos como 1.234,56)
+		if (value.LastIndexOf(',') > value.LastIndexOf('.'))
 		{
-			if (propertyInfo.PropertyType.IsValueType &&
-				Nullable.GetUnderlyingType(propertyInfo.PropertyType) == null)
-			{
-				throw new InvalidOperationException(
-					$"Não é possível converter valor vazio para {propertyInfo.PropertyType.Name}");
-			}
-			return;
+			// Formato europeu (vírgula como decimal)
+			return decimal.Parse(value, CultureInfo.GetCultureInfo("pt-BR"));
 		}
 
-		try
+		// Tenta parse com cultura invariante (usa ponto como decimal)
+		if (decimal.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result))
 		{
-			object value;
-
-			// Tratamento especial para tipos comuns
-			if (propertyInfo.PropertyType == typeof(string))
-			{
-				value = stringValue;
-			}
-			else if (propertyInfo.PropertyType == typeof(bool))
-			{
-				value = stringValue.Equals("SIM", StringComparison.OrdinalIgnoreCase);
-			}
-			else if (propertyInfo.PropertyType.IsEnum)
-			{
-				value = Enum.Parse(propertyInfo.PropertyType, stringValue, true);
-			}
-			else
-			{
-				// Conversão padrão para outros tipos
-				var underlyingType = Nullable.GetUnderlyingType(propertyInfo.PropertyType) ?? propertyInfo.PropertyType;
-				value = Convert.ChangeType(stringValue, underlyingType, CultureInfo.InvariantCulture);
-			}
-
-			propertyInfo.SetValue(model, value);
+			return result;
 		}
-		catch (Exception ex)
+
+		// Se falhar, tenta com cultura brasileira
+		return decimal.Parse(value, CultureInfo.GetCultureInfo("pt-BR"));
+	}
+
+	private static double ParseDouble(string value)
+	{
+		// Lógica similar ao ParseDecimal
+		value = Regex.Replace(value.Trim(), @"[^\d.,-]", "");
+
+		if (value.LastIndexOf(',') > value.LastIndexOf('.'))
 		{
-			throw new InvalidOperationException(
-				$"Falha ao converter valor '{stringValue}' para {propertyInfo.PropertyType.Name}", ex);
+			return double.Parse(value, CultureInfo.GetCultureInfo("pt-BR"));
 		}
+
+		if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out var result))
+		{
+			return result;
+		}
+
+		return double.Parse(value, CultureInfo.GetCultureInfo("pt-BR"));
 	}
 }
