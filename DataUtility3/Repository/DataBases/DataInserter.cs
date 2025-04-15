@@ -12,7 +12,7 @@ public class DataInserter
 		_connection = connection;
 	}
 
-	public void InsertData(SimpleTableData data)
+	public void InsertData(SimpleTableData data, bool substituteCreation = true, bool substituteLastModified = true, bool executeInsert = false)
 	{
 		if (data.Rows == null || data.Rows.Count == 0)
 		{
@@ -20,138 +20,167 @@ public class DataInserter
 			return;
 		}
 
-		// Remove a coluna ID da lista de cabeçalhos (se existir)
+		bool hasCreatedColumn = data.Headers.Contains("Created");
+		bool hasLastModifiedColumn = data.Headers.Contains("LastModifield");
+
+		// Remove ID column if exists
 		int idIndex = data.Headers.IndexOf("ID");
 		if (idIndex != -1)
 		{
-			data.Headers.RemoveAt(idIndex);
-			foreach (var row in data.Rows)
-			{
-				row.RemoveAt(idIndex);
-			}
-
-			// Remove o ID do schema, se existir
-			if (data.Schema?.DataTypes != null && data.Schema.DataTypes.Count > idIndex)
-			{
-				data.Schema.DataTypes.RemoveAt(idIndex);
-			}
-			if (data.Schema?.Nullable != null && data.Schema.Nullable.Count > idIndex)
-			{
-				data.Schema.Nullable.RemoveAt(idIndex);
-			}
-			if (data.Schema?.Special != null && data.Schema.Special.Count > idIndex)
-			{
-				data.Schema.Special.RemoveAt(idIndex);
-			}
+			RemoveColumn(data, idIndex);
 		}
 
-		// Remove as colunas de data da lista de cabeçalhos (se existirem)
-		int createdIndex = data.Headers.IndexOf("Created");
-		if (createdIndex != -1)
+		// Remove date columns only if we're going to substitute them
+		if (hasCreatedColumn && substituteCreation)
 		{
-			data.Headers.RemoveAt(createdIndex);
-			foreach (var row in data.Rows)
-			{
-				row.RemoveAt(createdIndex);
-			}
-
-			// Remove as colunas de data do schema, se existirem
-			if (data.Schema?.DataTypes != null && data.Schema.DataTypes.Count > createdIndex)
-			{
-				data.Schema.DataTypes.RemoveAt(createdIndex);
-			}
-			if (data.Schema?.Nullable != null && data.Schema.Nullable.Count > createdIndex)
-			{
-				data.Schema.Nullable.RemoveAt(createdIndex);
-			}
-			if (data.Schema?.Special != null && data.Schema.Special.Count > createdIndex)
-			{
-				data.Schema.Special.RemoveAt(createdIndex);
-			}
+			int createdIndex = data.Headers.IndexOf("Created");
+			if (createdIndex != -1) RemoveColumn(data, createdIndex);
 		}
 
-		int lastModifiedIndex = data.Headers.IndexOf("LastModifield");
-		if (lastModifiedIndex != -1)
+		if (hasLastModifiedColumn && substituteLastModified)
 		{
-			data.Headers.RemoveAt(lastModifiedIndex);
-			foreach (var row in data.Rows)
-			{
-				row.RemoveAt(lastModifiedIndex);
-			}
-
-			// Remove as colunas de data do schema, se existirem
-			if (data.Schema?.DataTypes != null && data.Schema.DataTypes.Count > lastModifiedIndex)
-			{
-				data.Schema.DataTypes.RemoveAt(lastModifiedIndex);
-			}
-			if (data.Schema?.Nullable != null && data.Schema.Nullable.Count > lastModifiedIndex)
-			{
-				data.Schema.Nullable.RemoveAt(lastModifiedIndex);
-			}
-			if (data.Schema?.Special != null && data.Schema.Special.Count > lastModifiedIndex)
-			{
-				data.Schema.Special.RemoveAt(lastModifiedIndex);
-			}
+			int lastModifiedIndex = data.Headers.IndexOf("LastModifield");
+			if (lastModifiedIndex != -1) RemoveColumn(data, lastModifiedIndex);
 		}
 
-		// Constrói a query de inserção
-		string columns = string.Join(", ", data.Headers.Select(header => $"[{header}]"));
-		string values = string.Join(", ", data.Headers.Select(header => $"@{header}"));
+		// Build the insert query
+		var columns = new List<string>(data.Headers.Select(header => $"[{header}]"));
+		var values = new List<string>(data.Headers.Select(header => $"@{header}"));
 
-		// Adiciona as colunas de data com GETDATE()
-		columns += ", [Created]";
-		values += ", GETDATE()";
+		if (hasCreatedColumn)
+		{
+			columns.Add("[Created]");
+			values.Add(substituteCreation ? "GETDATE()" : "@Created");
+		}
 
-		string query = $"INSERT INTO [{data.TableName}] ({columns}) VALUES ({values})";
+		if (hasLastModifiedColumn)
+		{
+			columns.Add("[LastModifield]");
+			values.Add(substituteLastModified ? "GETDATE()" : "@LastModifield");
+		}
 
+		string query = $"INSERT INTO [{data.TableName}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
 
 		using (var command = new SqlCommand(query, _connection))
 		{
 			foreach (var row in data.Rows)
 			{
 				command.Parameters.Clear();
-				StringBuilder formattedQuery = new StringBuilder();
-				formattedQuery.AppendLine($"INSERT INTO [{data.TableName}]");
-				formattedQuery.AppendLine("(");
+				var formattedQuery = BuildFormattedQuery(data, hasCreatedColumn, hasLastModifiedColumn,
+														 substituteCreation, substituteLastModified);
 
-				// Adiciona colunas formatadas
-				for (int i = 0; i < data.Headers.Count; i++)
-				{
-					string comma = i < data.Headers.Count - 1 ? "," : "";
-					formattedQuery.AppendLine($"    [{data.Headers[i]}]{comma}");
-				}
-				formattedQuery.AppendLine("    [Created]");
-				formattedQuery.AppendLine(")");
-				formattedQuery.AppendLine("VALUES");
-				formattedQuery.AppendLine("(");
-
-				// Prepara os valores para formatação
+				// Add parameters for regular columns
 				for (int i = 0; i < data.Headers.Count; i++)
 				{
 					string columnName = data.Headers[i];
 					string value = row[i];
 					string dataType = data.Schema?.DataTypes?[i] ?? "nvarchar";
 					object convertedValue = ConvertValueToDataType(value, dataType);
-					string formattedValue = FormatValueForQuery(convertedValue, dataType);
 
-					string comma = i < data.Headers.Count - 1 ? "," : "";
-					formattedQuery.AppendLine($"    {formattedValue}{comma} -- [{columnName}]");
-
-					command.Parameters.AddWithValue($"@{columnName}", convertedValue ?? DBNull.Value);
+					command.Parameters.AddWithValue($"@{columnName}", convertedValue != null ? convertedValue : DBNull.Value);
 				}
 
-				// Adiciona o valor para Created
-				formattedQuery.AppendLine("    GETDATE() -- [Created]");
-				formattedQuery.AppendLine(");");
+				// Add parameters for date columns if not substituted
+				if (hasCreatedColumn && !substituteCreation)
+				{
+					int createdIndex = data.Headers.IndexOf("Created");
+					object createdValue = createdIndex != -1 ? (object)row[createdIndex] : DBNull.Value;
+					command.Parameters.AddWithValue("@Created", createdValue);
+				}
 
-				// Imprime a query formatada
+				if (hasLastModifiedColumn && !substituteLastModified)
+				{
+					int lastModifiedIndex = data.Headers.IndexOf("LastModifield");
+					object lastModifiedValue = lastModifiedIndex != -1 ? (object)row[lastModifiedIndex] : DBNull.Value;
+					command.Parameters.AddWithValue("@LastModifield", lastModifiedValue);
+				}
+
 				Console.WriteLine("\nQuery formatada:");
 				Console.WriteLine(formattedQuery.ToString());
-
-				// Executa a query no banco de dados
-				command.ExecuteNonQuery();
+				if (executeInsert)
+				{
+					command.ExecuteNonQuery();
+					Console.WriteLine("Dados inseridos com sucesso!");
+				}
 			}
 		}
+	}
+
+	private void RemoveColumn(SimpleTableData data, int index)
+	{
+		data.Headers.RemoveAt(index);
+		foreach (var row in data.Rows) row.RemoveAt(index);
+
+		if (data.Schema?.DataTypes != null && data.Schema.DataTypes.Count > index)
+			data.Schema.DataTypes.RemoveAt(index);
+		if (data.Schema?.Nullable != null && data.Schema.Nullable.Count > index)
+			data.Schema.Nullable.RemoveAt(index);
+		if (data.Schema?.Special != null && data.Schema.Special.Count > index)
+			data.Schema.Special.RemoveAt(index);
+	}
+
+	private StringBuilder BuildFormattedQuery(SimpleTableData data, bool hasCreatedColumn, bool hasLastModifiedColumn,
+											bool substituteCreation, bool substituteLastModified)
+	{
+		var formattedQuery = new StringBuilder();
+		formattedQuery.AppendLine($"INSERT INTO [{data.TableName}]");
+		formattedQuery.AppendLine("(");
+
+		// Add regular columns
+		for (int i = 0; i < data.Headers.Count; i++)
+		{
+			string comma = i < data.Headers.Count - 1 || hasCreatedColumn || hasLastModifiedColumn ? "," : "";
+			formattedQuery.AppendLine($"    [{data.Headers[i]}]{comma}");
+		}
+
+		// Add date columns if they exist
+		if (hasCreatedColumn)
+		{
+			string comma = hasLastModifiedColumn ? "," : "";
+			formattedQuery.AppendLine($"    [Created]{comma}");
+		}
+		if (hasLastModifiedColumn)
+		{
+			formattedQuery.AppendLine("    [LastModifield]");
+		}
+
+		formattedQuery.AppendLine(")");
+		formattedQuery.AppendLine("VALUES");
+		formattedQuery.AppendLine("(");
+
+		// Add values for regular columns
+		for (int i = 0; i < data.Headers.Count; i++)
+		{
+			string columnName = data.Headers[i];
+			string value = data.Rows[0][i]; // Using first row for demonstration
+			string dataType = data.Schema?.DataTypes?[i] ?? "nvarchar";
+			object convertedValue = ConvertValueToDataType(value, dataType);
+			string formattedValue = FormatValueForQuery(convertedValue, dataType);
+
+			string comma = i < data.Headers.Count - 1 || hasCreatedColumn || hasLastModifiedColumn ? "," : "";
+			formattedQuery.AppendLine($"    {formattedValue}{comma} -- [{columnName}]");
+		}
+
+		// Add values for date columns
+		if (hasCreatedColumn)
+		{
+			string comma = hasLastModifiedColumn ? "," : "";
+			string createdValue = substituteCreation ? "GETDATE()" :
+				FormatValueForQuery(data.Rows[0].Count > data.Headers.Count ?
+				data.Rows[0][data.Headers.Count] : null, "datetime");
+			formattedQuery.AppendLine($"    {createdValue}{comma} -- [Created]");
+		}
+
+		if (hasLastModifiedColumn)
+		{
+			string lastModifiedValue = substituteLastModified ? "GETDATE()" :
+				FormatValueForQuery(data.Rows[0].Count > data.Headers.Count + 1 ?
+				data.Rows[0][data.Headers.Count + 1] : null, "datetime");
+			formattedQuery.AppendLine($"    {lastModifiedValue} -- [LastModifield]");
+		}
+
+		formattedQuery.AppendLine(");");
+		return formattedQuery;
 	}
 
 	// Método auxiliar para converter valores com base no tipo de dado
