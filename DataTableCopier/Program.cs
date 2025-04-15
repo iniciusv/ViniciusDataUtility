@@ -12,18 +12,28 @@ class Program
 			//const string sourceConnStr = "Data Source=tars.database.windows.net;Initial Catalog=ambev-poc;Persist Security Info=True;User ID=tereos;Password=WePi_r_sW&wrUNUsu9i@;Connection Timeout=10000;MultipleActiveResultSets=true;";
 			//const string sourceConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=ambev-poc;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
 			const string sourceConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=sylvamo-qa;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
-			const string targetConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=tereos;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
+
+			const string targetConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=ecorodovias-qa;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
+
+			const string TereosConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=Tereos;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
+
+			const string SbfQAConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=slartibartfast-qa;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
+
+			//const string targetConnStr = "Server=tcp:tars.database.windows.net;Initial Catalog=bid-poc;Persist Security Info=False;User ID=viniciusfortes@42codelab.com;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Interactive;";
+
+
+
 			// Configurações fixas
-			const string tableName = "PurchaseRequestItem";
-			//const string condition = "ID = 2517"; // Nova cláusula WHERE
-			const string condition = "ClientCode = 0206045996"; // Nova cláusula WHERE
+			const string tableName = "IVADefinitionPolicy";
+			const string condition = "TenantID =7"; // Nova cláusula WHERE
+			//const string condition = "ClientCode = 0206045996"; // Nova cláusula WHERE
 			const bool replaceExisting = false;
 
 
 
 			TransferData(
-				sourceConnStr,
-				targetConnStr,
+				SbfQAConnStr,
+				SbfQAConnStr,
 				tableName,
 				condition, // Passa a condição em vez de IDs
 				replaceExisting
@@ -51,17 +61,6 @@ class Program
 
 		// Mostrar campos do target que não estão na source
 		PrintMissingSourceColumns(sourceTableData.Headers, targetHeaders);
-
-		// Remover coluna específica (PriceHistory) se existir
-		RemoveColumnFromSimpleData(sourceTableData, "PriceHistory");
-		RemoveColumnFromSimpleData(sourceTableData, "PurchaseRequestItemGroup");
-		RemoveColumnFromSimpleData(sourceTableData, "Plant");
-		RemoveColumnFromSimpleData(sourceTableData, "Material");
-		RemoveColumnFromSimpleData(sourceTableData, "Center");
-		RemoveColumnFromSimpleData(sourceTableData, "QuotationSuggestion");
-		RemoveColumnFromSimpleData(sourceTableData, "FixedSupplier");
-		RemoveColumnFromSimpleData(sourceTableData, "Order");
-
 
 		// Criar novo SimpleTableData apenas com colunas correspondentes
 		var filteredTableData = FilterTableDataByMatchingHeaders(sourceTableData, targetHeaders);

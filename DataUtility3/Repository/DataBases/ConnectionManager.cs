@@ -52,7 +52,6 @@ public class ConnectionManager : IDisposable
 			_connection = null;
 		}
 	}
-
 	public void Dispose()
 	{
 		CloseConnection();
